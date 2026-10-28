@@ -36,7 +36,14 @@ const validResponse = JSON.stringify({
 
 const validReview = JSON.stringify({
   schemaVersion: "1.0",
-  verdicts: [{ index: 0, verdict: "pass", issues: [] }],
+  verdicts: [
+    {
+      index: 0,
+      rationale: "LEFT JOIN preserves every row from the left input.",
+      verdict: "pass",
+      issues: [],
+    },
+  ],
 });
 
 describe("generatePracticeSet", () => {
@@ -52,17 +59,17 @@ describe("generatePracticeSet", () => {
   });
 
   it("retries one structurally invalid response and revalidates the replacement", async () => {
-    const model: QuestionModel = {
-      complete: vi
-        .fn()
-        .mockResolvedValueOnce("not json")
-        .mockResolvedValueOnce(validResponse)
-        .mockResolvedValueOnce(validReview),
-    };
+    const complete = vi
+      .fn()
+      .mockResolvedValueOnce("not json")
+      .mockResolvedValueOnce(validResponse)
+      .mockResolvedValueOnce(validReview);
+    const model: QuestionModel = { complete };
     const set = await generatePracticeSet(request, model, undefined, { sleep: async () => {} });
 
     expect(set.questions).toHaveLength(1);
     expect(model.complete).toHaveBeenCalledTimes(3);
+    expect(complete.mock.calls[1]?.[0].messages[0]?.content).toContain('["invalid_json"]');
   });
 
   it("stops after retry exhaustion", async () => {
@@ -76,27 +83,41 @@ describe("generatePracticeSet", () => {
   it("regenerates once after a failed semantic review", async () => {
     const failedReview = JSON.stringify({
       schemaVersion: "1.0",
-      verdicts: [{ index: 0, verdict: "fail", issues: ["incorrect_answer"] }],
+      verdicts: [
+        {
+          index: 0,
+          rationale: "The selected option is not correct for the stated prompt.",
+          verdict: "fail",
+          issues: ["incorrect_answer"],
+        },
+      ],
     });
-    const model: QuestionModel = {
-      complete: vi
-        .fn()
-        .mockResolvedValueOnce(validResponse)
-        .mockResolvedValueOnce(failedReview)
-        .mockResolvedValueOnce(validResponse)
-        .mockResolvedValueOnce(validReview),
-    };
+    const complete = vi
+      .fn()
+      .mockResolvedValueOnce(validResponse)
+      .mockResolvedValueOnce(failedReview)
+      .mockResolvedValueOnce(validResponse)
+      .mockResolvedValueOnce(validReview);
+    const model: QuestionModel = { complete };
 
     await expect(
       generatePracticeSet(request, model, undefined, { sleep: async () => {} }),
     ).resolves.toMatchObject({ questions: [{ type: "multiple_choice" }] });
     expect(model.complete).toHaveBeenCalledTimes(4);
+    expect(complete.mock.calls[2]?.[0].messages[0]?.content).toContain('["incorrect_answer"]');
   });
 
   it("rejects questions after semantic review retry exhaustion", async () => {
     const failedReview = JSON.stringify({
       schemaVersion: "1.0",
-      verdicts: [{ index: 0, verdict: "fail", issues: ["incorrect_answer"] }],
+      verdicts: [
+        {
+          index: 0,
+          rationale: "The selected option is not correct for the stated prompt.",
+          verdict: "fail",
+          issues: ["incorrect_answer"],
+        },
+      ],
     });
     const model: QuestionModel = {
       complete: vi

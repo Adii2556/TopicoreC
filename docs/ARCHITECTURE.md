@@ -237,8 +237,8 @@ TopicoreC/
 │   │   ├── blueprints.ts
 │   │   ├── pipeline.ts
 │   │   ├── prompts/
-│   │   │   ├── generator-v1.ts
-│   │   │   └── reviewer-v1.ts
+│   │   │   ├── generator-v2.ts
+│   │   │   └── reviewer-v2.ts
 │   │   └── validate-draft.ts
 │   ├── ai/nvidia/
 │   │   ├── client.ts

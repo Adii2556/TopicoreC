@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { QuestionModel } from "@/ai/nvidia/types";
 import type { GeneratePracticeSetRequest, QuestionDraft } from "@/domain/practice/schemas";
-import { buildReviewerMessages, reviewJsonSchema } from "@/generation/prompts/reviewer-v1";
+import { buildReviewerMessages, reviewJsonSchema } from "@/generation/prompts/reviewer-v2";
 
 const reviewIssueSchema = z.enum([
   "incorrect_answer",
@@ -21,6 +21,7 @@ const reviewSchema = z
       z
         .object({
           index: z.number().int().nonnegative(),
+          rationale: z.string().trim().min(10).max(800),
           verdict: z.enum(["pass", "fail"]),
           issues: z.array(reviewIssueSchema),
         })
@@ -45,9 +46,8 @@ export async function reviewQuestions(
   const raw = await model.complete(
     {
       messages: buildReviewerMessages(request, questions),
-      // Current Nemotron reasoning models spend part of this budget before emitting JSON.
+      // The schema-bound rationale provides a bounded verification trace without free-form output.
       maxTokens: Math.min(1_400 + questions.length * 200, 3_200),
-      // A zero budget keeps the independent verdict in the strict JSON channel.
       reasoningBudget: 0,
       temperature: 0,
       guidedJsonSchema: reviewJsonSchema,

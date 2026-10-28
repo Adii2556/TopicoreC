@@ -54,11 +54,18 @@ export const multipleChoiceDraftSchema = z
     type: z.literal("multiple_choice"),
     topic: topicSchema,
     difficulty: difficultySchema,
-    prompt: z.string().trim().min(10).max(1_200),
+    prompt: z
+      .string()
+      .trim()
+      .min(PRACTICE_LIMITS.minQuestionPromptLength)
+      .max(PRACTICE_LIMITS.maxQuestionPromptLength),
     code: z
       .object({
         language: subjectSchema,
-        source: z.string().min(1).max(2_000),
+        source: z
+          .string()
+          .min(PRACTICE_LIMITS.minCodeSourceLength)
+          .max(PRACTICE_LIMITS.maxCodeSourceLength),
       })
       .strict()
       .optional(),
@@ -67,14 +74,22 @@ export const multipleChoiceDraftSchema = z
         z
           .object({
             id: optionIdSchema,
-            text: z.string().trim().min(1).max(500),
+            text: z
+              .string()
+              .trim()
+              .min(PRACTICE_LIMITS.minOptionTextLength)
+              .max(PRACTICE_LIMITS.maxOptionTextLength),
           })
           .strict(),
       )
-      .length(4),
+      .length(PRACTICE_LIMITS.optionCount),
     answer: z.object({ optionId: optionIdSchema }).strict(),
-    hint: z.string().trim().min(1).max(500),
-    explanation: z.string().trim().min(10).max(1_500),
+    hint: z.string().trim().min(PRACTICE_LIMITS.minHintLength).max(PRACTICE_LIMITS.maxHintLength),
+    explanation: z
+      .string()
+      .trim()
+      .min(PRACTICE_LIMITS.minExplanationLength)
+      .max(PRACTICE_LIMITS.maxExplanationLength),
   })
   .strict();
 
@@ -83,18 +98,42 @@ export const writtenDraftSchema = z
     type: z.literal("written"),
     topic: topicSchema,
     difficulty: difficultySchema,
-    prompt: z.string().trim().min(10).max(1_200),
+    prompt: z
+      .string()
+      .trim()
+      .min(PRACTICE_LIMITS.minQuestionPromptLength)
+      .max(PRACTICE_LIMITS.maxQuestionPromptLength),
     code: z
       .object({
         language: subjectSchema,
-        source: z.string().min(1).max(2_000),
+        source: z
+          .string()
+          .min(PRACTICE_LIMITS.minCodeSourceLength)
+          .max(PRACTICE_LIMITS.maxCodeSourceLength),
       })
       .strict()
       .optional(),
-    referenceAnswer: z.string().trim().min(10).max(1_500),
-    keyPoints: z.array(z.string().trim().min(2).max(300)).min(1).max(5),
-    hint: z.string().trim().min(1).max(500),
-    explanation: z.string().trim().min(10).max(1_500),
+    referenceAnswer: z
+      .string()
+      .trim()
+      .min(PRACTICE_LIMITS.minReferenceAnswerLength)
+      .max(PRACTICE_LIMITS.maxReferenceAnswerLength),
+    keyPoints: z
+      .array(
+        z
+          .string()
+          .trim()
+          .min(PRACTICE_LIMITS.minKeyPointLength)
+          .max(PRACTICE_LIMITS.maxKeyPointLength),
+      )
+      .min(PRACTICE_LIMITS.minKeyPoints)
+      .max(PRACTICE_LIMITS.maxKeyPoints),
+    hint: z.string().trim().min(PRACTICE_LIMITS.minHintLength).max(PRACTICE_LIMITS.maxHintLength),
+    explanation: z
+      .string()
+      .trim()
+      .min(PRACTICE_LIMITS.minExplanationLength)
+      .max(PRACTICE_LIMITS.maxExplanationLength),
   })
   .strict();
 

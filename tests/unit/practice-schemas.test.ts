@@ -4,6 +4,7 @@ import {
   generatePracticeSetRequestSchema,
   multipleChoiceDraftSchema,
   practiceSetSchema,
+  writtenDraftSchema,
 } from "@/domain/practice/schemas";
 
 describe("generatePracticeSetRequestSchema", () => {
@@ -97,6 +98,26 @@ describe("multipleChoiceDraftSchema", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe("writtenDraftSchema", () => {
+  const writtenDraft = {
+    type: "written",
+    topic: "dictionaries",
+    difficulty: "beginner",
+    prompt: "What value does an empty Python dictionary literal produce?",
+    referenceAnswer: "{}",
+    keyPoints: ["Curly braces without entries create an empty dictionary."],
+    hint: "Look at the literal syntax.",
+    explanation: "In Python, empty curly braces evaluate to a new empty dictionary.",
+  } as const;
+
+  it("accepts a concise complete answer and still rejects an empty answer", () => {
+    expect(writtenDraftSchema.safeParse(writtenDraft).success).toBe(true);
+    expect(writtenDraftSchema.safeParse({ ...writtenDraft, referenceAnswer: " " }).success).toBe(
+      false,
+    );
   });
 });
 

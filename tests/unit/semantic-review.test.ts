@@ -32,15 +32,27 @@ const questions: QuestionDraft[] = [
 
 describe("reviewQuestions", () => {
   it("accepts exactly one passing verdict per question", async () => {
+    const complete = vi.fn().mockResolvedValue(
+      JSON.stringify({
+        schemaVersion: "1.0",
+        verdicts: [
+          {
+            index: 0,
+            rationale: "LEFT JOIN preserves every row from the left input.",
+            verdict: "pass",
+            issues: [],
+          },
+        ],
+      }),
+    );
     const model: QuestionModel = {
-      complete: vi.fn().mockResolvedValue(
-        JSON.stringify({
-          schemaVersion: "1.0",
-          verdicts: [{ index: 0, verdict: "pass", issues: [] }],
-        }),
-      ),
+      complete,
     };
     await expect(reviewQuestions(request, questions, model)).resolves.toBeUndefined();
+    expect(complete.mock.calls[0]?.[0]).toMatchObject({
+      reasoningBudget: 0,
+      temperature: 0,
+    });
   });
 
   it("rejects duplicate review indexes", async () => {
@@ -49,8 +61,18 @@ describe("reviewQuestions", () => {
         JSON.stringify({
           schemaVersion: "1.0",
           verdicts: [
-            { index: 0, verdict: "pass", issues: [] },
-            { index: 0, verdict: "pass", issues: [] },
+            {
+              index: 0,
+              rationale: "The answer correctly identifies LEFT JOIN.",
+              verdict: "pass",
+              issues: [],
+            },
+            {
+              index: 0,
+              rationale: "The answer correctly identifies LEFT JOIN.",
+              verdict: "pass",
+              issues: [],
+            },
           ],
         }),
       ),
@@ -67,14 +89,28 @@ describe("reviewQuestions", () => {
       "an out-of-range index",
       JSON.stringify({
         schemaVersion: "1.0",
-        verdicts: [{ index: 4, verdict: "pass", issues: [] }],
+        verdicts: [
+          {
+            index: 4,
+            rationale: "The answer correctly identifies LEFT JOIN.",
+            verdict: "pass",
+            issues: [],
+          },
+        ],
       }),
     ],
     [
       "a factual failure",
       JSON.stringify({
         schemaVersion: "1.0",
-        verdicts: [{ index: 0, verdict: "fail", issues: ["incorrect_answer"] }],
+        verdicts: [
+          {
+            index: 0,
+            rationale: "The selected option does not preserve all left rows.",
+            verdict: "fail",
+            issues: ["incorrect_answer"],
+          },
+        ],
       }),
     ],
   ])("rejects %s", async (_label, response) => {

@@ -43,7 +43,14 @@ const validGeneration = JSON.stringify({
 
 const validReview = JSON.stringify({
   schemaVersion: "1.0",
-  verdicts: [{ index: 0, verdict: "pass", issues: [] }],
+  verdicts: [
+    {
+      index: 0,
+      rationale: "LEFT JOIN preserves every row from the left input.",
+      verdict: "pass",
+      issues: [],
+    },
+  ],
 });
 
 function jsonRequest(body: unknown = validRequest) {

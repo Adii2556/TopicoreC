@@ -2,7 +2,7 @@ import type { QuestionModel } from "@/ai/nvidia/types";
 import type { GeneratePracticeSetRequest, PracticeSet } from "@/domain/practice/schemas";
 import { SemanticReviewError, reviewQuestions } from "@/verification/semantic-review";
 
-import { buildGeneratorMessages, generatedSetJsonSchema } from "./prompts/generator-v1";
+import { buildGeneratorMessages, generatedSetJsonSchema } from "./prompts/generator-v2";
 import { DraftValidationError, parseAndValidateDraft } from "./validate-draft";
 
 export interface PipelineOptions {
@@ -19,12 +19,13 @@ export async function generatePracticeSet(
     options.sleep ??
     ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   let lastError: unknown;
+  let repairIssues: string[] = [];
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const raw = await model.complete(
         {
-          messages: buildGeneratorMessages(request),
+          messages: buildGeneratorMessages(request, repairIssues),
           maxTokens: Math.min(1_800 + request.questionCount * 850, 8_000),
           reasoningBudget: 0,
           temperature: 0.3,
@@ -54,6 +55,7 @@ export async function generatePracticeSet(
       const retryableValidationError =
         error instanceof DraftValidationError || error instanceof SemanticReviewError;
       if (attempt === 1 || (!retryableProviderError && !retryableValidationError)) throw error;
+      if (retryableValidationError) repairIssues = [...error.issues];
       signal?.throwIfAborted();
       await sleep(250 + Math.floor(Math.random() * 250));
       signal?.throwIfAborted();

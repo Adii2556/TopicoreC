@@ -6,7 +6,7 @@ Date: 2026-10-28
 
 - TypeScript: passed with `tsc --noEmit`.
 - ESLint: passed with the Next.js and TypeScript rules enabled.
-- Unit and integration tests: 93 passed across 14 files; the 6 live-provider cases are skipped by
+- Unit and integration tests: 96 passed across 14 files; the 6 live-provider cases are skipped by
   default.
 - End-to-end: 15 passed across desktop, 820px tablet, and Pixel 7 Chromium projects.
 - Production build: passed with Next.js 16.4.3.
@@ -29,11 +29,10 @@ recovery; and horizontal overflow checks at all three viewport sizes.
   corrupt/oversized storage, shortcuts, inert rendering, and non-interference with focused form
   controls.
 - Prompt and draft tests cover strict output, duplicate options, mixed ordering, and written output.
-- P7 live NVIDIA matrix with an explicit `nvidia/nemotron-3.5-lightning-30b-a3b` override in prompt
-  mode: 5 of 6 balanced subject/mode/difficulty cases passed. The Python advanced MCQ case failed
-  closed after two invalid-JSON generation attempts, then passed in an identical targeted rerun.
-  Each success exercised generation, deterministic validation, semantic review, and trusted
-  practice-set assembly.
+- Latest live NVIDIA matrix with an explicit `nvidia/nemotron-3.5-lightning-30b-a3b` override in
+  prompt mode: all 6 balanced subject/mode/difficulty cases passed. Each exercised generation,
+  deterministic validation, schema-bound review rationale, semantic review, and trusted practice-set
+  assembly. The run completed in 51.23 seconds; individual cases ranged from 3.76 to 15.57 seconds.
 - The managed environment's configured default model returned HTTP 410 for all 6 cases despite
   current credential/runtime-variable readiness. Deployment configuration must be updated and
   retested without a command-line model override.

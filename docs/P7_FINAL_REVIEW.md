@@ -30,7 +30,7 @@ No new runtime dependency was introduced.
 ## Executed release evidence
 
 - A fresh `npm ci` completed using Node.js 24.19.0 and npm 11.9.0.
-- Formatting, strict TypeScript, ESLint, and 93 deterministic tests passed. Six opt-in live tests
+- Formatting, strict TypeScript, ESLint, and 96 deterministic tests passed. Six opt-in live tests
   are intentionally skipped by the default suite.
 - The optimized Next.js 16.4.3 build passed.
 - All 15 Playwright journeys passed in desktop, tablet, and mobile Chromium profiles, including the
@@ -52,11 +52,13 @@ The managed environment reports current network and credential readiness, but al
 its configured default model failed with NVIDIA HTTP 410. This establishes that readiness of an
 injected variable does not establish continued model availability.
 
-With an explicit `nvidia/nemotron-3.5-lightning-30b-a3b` override in prompt JSON mode, five of six
+With an explicit `nvidia/nemotron-3.5-lightning-30b-a3b` override in prompt JSON mode, all six
 balanced SQL/Python cases passed the complete generation, validation, semantic-review, and assembly
-pipeline. The Python advanced multiple-choice case exhausted the two-attempt budget with invalid
-JSON; the identical targeted case then passed. The application correctly failed closed. This smoke
-evidence is useful but does not replace the planned 30-case human-scored qualification.
+pipeline after the prompt-v2 reliability repair. The repair aligned the model JSON contract with
+runtime length limits, allowed valid concise written answers, supplied trusted rejection categories
+to the one replacement attempt, and required a bounded schema-validated review rationale. Strict
+validation and the two-attempt ceiling remain intact. This smoke evidence is useful but does not
+replace the planned 30-case human-scored qualification.
 
 ## Remaining release conditions
 

@@ -1,5 +1,6 @@
 import { GenerationForm } from "@/components/generation-form";
 import { generatePracticeSetRequestSchema } from "@/domain/practice/schemas";
+import { isDevMonitorEnabled } from "@/monitoring/server";
 
 interface HomePageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -70,7 +71,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               Start focused. You can always generate a different set afterward.
             </p>
           </div>
-          <GenerationForm initialConfig={parsedInitial.success ? parsedInitial.data : undefined} />
+          <GenerationForm
+            initialConfig={parsedInitial.success ? parsedInitial.data : undefined}
+            monitoringEnabled={isDevMonitorEnabled()}
+          />
         </section>
       </div>
     </main>

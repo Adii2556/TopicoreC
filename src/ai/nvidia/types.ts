@@ -9,8 +9,10 @@ export interface CompletionRequest {
   messages: ChatMessage[];
   reasoningBudget?: number;
   temperature: number;
+  monitoring?: CompletionMonitoringContext;
 }
 
 export interface QuestionModel {
   complete(request: CompletionRequest, signal?: AbortSignal): Promise<string>;
 }
+import type { CompletionMonitoringContext } from "@/monitoring/types";

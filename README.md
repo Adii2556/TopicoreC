@@ -54,6 +54,15 @@ guided JSON extension; `prompt` is the conservative default.
 Playwright normally uses its managed Chromium. In an environment with a system Chromium, set
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to that executable before running the E2E suite.
 
+## Temporary developer monitor
+
+For local troubleshooting, set `ENABLE_DEV_MONITOR=true` in `.env.local`, restart `npm run dev`, and
+open `http://localhost:3000/dev/monitor`. The panel shows only measured in-memory events from the
+browser, generation route, NVIDIA adapter, validators, reviewer, and retry pipeline. It is disabled
+with a server-side 404 outside development, even if the flag is set. Do not use it as a production
+admin system. See [`docs/DEV_MONITOR.md`](docs/DEV_MONITOR.md) for captured events, limitations, and
+removal instructions.
+
 ## Generation flow
 
 1. The API validates media type, body size, origin, request shape, rate, and concurrency.
@@ -81,6 +90,8 @@ Playwright normally uses its managed Chromium. In an environment with a system C
 - [`docs/P7_FINAL_REVIEW.md`](docs/P7_FINAL_REVIEW.md): final audit, executed release evidence,
   deployment blockers, and verdict.
 - [`docs/ENHANCEMENTS.md`](docs/ENHANCEMENTS.md): P5 prioritization and scope decisions.
+- [`docs/DEV_MONITOR.md`](docs/DEV_MONITOR.md): temporary local monitoring setup, event coverage,
+  security boundaries, and removal instructions.
 - [`docs/SECURITY_REVIEW.md`](docs/SECURITY_REVIEW.md): security and production audit.
 - [`docs/VERIFICATION.md`](docs/VERIFICATION.md): executed checks and known test limitations.
 - [`docs/PRODUCTION_CHECKLIST.md`](docs/PRODUCTION_CHECKLIST.md): deployment checklist.

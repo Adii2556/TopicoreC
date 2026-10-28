@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { QuestionModel } from "@/ai/nvidia/types";
 import type { GeneratePracticeSetRequest, QuestionDraft } from "@/domain/practice/schemas";
 import { buildReviewerMessages, reviewJsonSchema } from "@/generation/prompts/reviewer-v2";
+import { recordMonitorEvent } from "@/monitoring/server";
 
 const reviewIssueSchema = z.enum([
   "incorrect_answer",
@@ -42,7 +43,20 @@ export async function reviewQuestions(
   questions: QuestionDraft[],
   model: QuestionModel,
   signal?: AbortSignal,
+  monitoring?: { requestId: string; attempt: number },
 ) {
+  const startedAt = performance.now();
+  if (monitoring) {
+    recordMonitorEvent({
+      requestId: monitoring.requestId,
+      event: "semantic_review.started",
+      level: "debug",
+      source: "semantic-review",
+      status: "started",
+      message: "AI-assisted semantic review started.",
+      details: { attempt: monitoring.attempt, questionCount: questions.length },
+    });
+  }
   const raw = await model.complete(
     {
       messages: buildReviewerMessages(request, questions),
@@ -51,6 +65,15 @@ export async function reviewQuestions(
       reasoningBudget: 0,
       temperature: 0,
       guidedJsonSchema: reviewJsonSchema,
+      ...(monitoring
+        ? {
+            monitoring: {
+              requestId: monitoring.requestId,
+              attempt: monitoring.attempt,
+              operation: "semantic_review" as const,
+            },
+          }
+        : {}),
     },
     signal,
   );
@@ -59,11 +82,35 @@ export async function reviewQuestions(
   try {
     json = JSON.parse(raw);
   } catch {
+    if (monitoring) {
+      recordMonitorEvent({
+        requestId: monitoring.requestId,
+        event: "semantic_review.failed",
+        level: "error",
+        source: "semantic-review",
+        status: "failed",
+        message: "Semantic review returned invalid JSON.",
+        durationMs: performance.now() - startedAt,
+        details: { attempt: monitoring.attempt, issues: ["invalid_review_json"] },
+      });
+    }
     throw new SemanticReviewError(["invalid_review_json"]);
   }
 
   const parsed = reviewSchema.safeParse(json);
   if (!parsed.success || parsed.data.verdicts.length !== questions.length) {
+    if (monitoring) {
+      recordMonitorEvent({
+        requestId: monitoring.requestId,
+        event: "semantic_review.failed",
+        level: "error",
+        source: "semantic-review",
+        status: "failed",
+        message: "Semantic review contract validation failed.",
+        durationMs: performance.now() - startedAt,
+        details: { attempt: monitoring.attempt, issues: ["invalid_review_contract"] },
+      });
+    }
     throw new SemanticReviewError(["invalid_review_contract"]);
   }
 
@@ -72,12 +119,55 @@ export async function reviewQuestions(
     new Set(indexes).size !== questions.length ||
     indexes.some((index) => index >= questions.length)
   ) {
+    if (monitoring) {
+      recordMonitorEvent({
+        requestId: monitoring.requestId,
+        event: "semantic_review.failed",
+        level: "error",
+        source: "semantic-review",
+        status: "failed",
+        message: "Semantic review returned invalid question indexes.",
+        durationMs: performance.now() - startedAt,
+        details: { attempt: monitoring.attempt, issues: ["invalid_review_indexes"] },
+      });
+    }
     throw new SemanticReviewError(["invalid_review_indexes"]);
   }
 
   const failed = parsed.data.verdicts.filter((verdict) => verdict.verdict === "fail");
   if (failed.length > 0) {
     const issues = failed.flatMap((verdict) => verdict.issues);
-    throw new SemanticReviewError(issues.length > 0 ? [...new Set(issues)] : ["review_failed"]);
+    const uniqueIssues = issues.length > 0 ? [...new Set(issues)] : ["review_failed"];
+    if (monitoring) {
+      recordMonitorEvent({
+        requestId: monitoring.requestId,
+        event: "semantic_review.failed",
+        level: "error",
+        source: "semantic-review",
+        status: "failed",
+        message: "AI-assisted semantic checks rejected generated questions.",
+        durationMs: performance.now() - startedAt,
+        details: {
+          attempt: monitoring.attempt,
+          validationType: "semantic",
+          issues: uniqueIssues,
+          failedQuestionIndexes: failed.map((verdict) => verdict.index),
+          action: "rejected",
+        },
+      });
+    }
+    throw new SemanticReviewError(uniqueIssues);
+  }
+  if (monitoring) {
+    recordMonitorEvent({
+      requestId: monitoring.requestId,
+      event: "semantic_review.passed",
+      level: "success",
+      source: "semantic-review",
+      status: "success",
+      message: "AI-assisted semantic checks passed.",
+      durationMs: performance.now() - startedAt,
+      details: { attempt: monitoring.attempt, questionCount: questions.length },
+    });
   }
 }

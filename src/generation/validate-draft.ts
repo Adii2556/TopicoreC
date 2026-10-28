@@ -1,6 +1,7 @@
 import { getExpectedQuestionTypes } from "@/domain/practice/mode";
 import type { GeneratePracticeSetRequest, QuestionDraft } from "@/domain/practice/schemas";
 import { generatedSetDraftSchema } from "@/domain/practice/schemas";
+import { recordMonitorEvent } from "@/monitoring/server";
 
 export class DraftValidationError extends Error {
   constructor(readonly issues: string[]) {
@@ -65,16 +66,93 @@ function validateQuestion(question: QuestionDraft, request: GeneratePracticeSetR
   return issues;
 }
 
-export function parseAndValidateDraft(raw: string, request: GeneratePracticeSetRequest) {
+export function parseAndValidateDraft(
+  raw: string,
+  request: GeneratePracticeSetRequest,
+  monitoring?: { requestId: string; attempt: number },
+) {
+  const startedAt = performance.now();
+  if (monitoring) {
+    recordMonitorEvent({
+      requestId: monitoring.requestId,
+      event: "validation.started",
+      level: "debug",
+      source: "draft-validator",
+      status: "started",
+      message: "AI response parsing and validation started.",
+      details: { attempt: monitoring.attempt, responseBytes: new TextEncoder().encode(raw).length },
+    });
+  }
   let json: unknown;
   try {
     json = JSON.parse(raw);
   } catch {
+    if (monitoring) {
+      recordMonitorEvent({
+        requestId: monitoring.requestId,
+        event: "json.parse.failed",
+        level: "error",
+        source: "draft-validator",
+        status: "failed",
+        message: "The AI response was not valid JSON.",
+        durationMs: performance.now() - startedAt,
+        details: {
+          attempt: monitoring.attempt,
+          rule: "valid_json_document",
+          actual: { responseBytes: new TextEncoder().encode(raw).length },
+          action: "rejected",
+        },
+      });
+    }
     throw new DraftValidationError(["invalid_json"]);
+  }
+  if (monitoring) {
+    recordMonitorEvent({
+      requestId: monitoring.requestId,
+      event: "json.parse.completed",
+      level: "debug",
+      source: "draft-validator",
+      status: "success",
+      message: "The AI response parsed as JSON.",
+      durationMs: performance.now() - startedAt,
+      details: { attempt: monitoring.attempt },
+    });
   }
 
   const parsed = generatedSetDraftSchema.safeParse(json);
   if (!parsed.success) {
+    const structuredIssues = parsed.error.issues.map((issue) => ({
+      rule: issue.code,
+      path: issue.path.join("."),
+      questionIndex: typeof issue.path[1] === "number" ? issue.path[1] : undefined,
+      expected: "generated question schema",
+      action: "rejected",
+    }));
+    if (monitoring) {
+      recordMonitorEvent({
+        requestId: monitoring.requestId,
+        event: "validation.failed",
+        level: "error",
+        source: "draft-validator",
+        status: "failed",
+        message: "Structural schema validation rejected the AI response.",
+        durationMs: performance.now() - startedAt,
+        details: {
+          attempt: monitoring.attempt,
+          validationType: "structural",
+          issues: structuredIssues,
+          rejectedCount: Math.max(
+            1,
+            new Set(
+              structuredIssues
+                .map((issue) => issue.questionIndex)
+                .filter((index) => index !== undefined),
+            ).size,
+          ),
+          action: "rejected",
+        },
+      });
+    }
     throw new DraftValidationError(
       parsed.error.issues.map(
         (issue) => `${issue.code}:${issue.path.length > 0 ? issue.path.join(".") : "root"}`,
@@ -98,6 +176,46 @@ export function parseAndValidateDraft(raw: string, request: GeneratePracticeSetR
     }
   }
 
-  if (issues.length > 0) throw new DraftValidationError([...new Set(issues)]);
+  if (issues.length > 0) {
+    const uniqueIssues = [...new Set(issues)];
+    if (monitoring) {
+      recordMonitorEvent({
+        requestId: monitoring.requestId,
+        event: "validation.failed",
+        level: "error",
+        source: "draft-validator",
+        status: "failed",
+        message: "Deterministic content validation rejected generated questions.",
+        durationMs: performance.now() - startedAt,
+        details: {
+          attempt: monitoring.attempt,
+          validationType: "content",
+          issues: uniqueIssues.map((rule) => ({ rule, action: "rejected" })),
+          requestedCount: request.questionCount,
+          returnedCount: parsed.data.questions.length,
+          acceptedCount: 0,
+          rejectedCount: parsed.data.questions.length,
+        },
+      });
+    }
+    throw new DraftValidationError(uniqueIssues);
+  }
+  if (monitoring) {
+    recordMonitorEvent({
+      requestId: monitoring.requestId,
+      event: "validation.passed",
+      level: "success",
+      source: "draft-validator",
+      status: "success",
+      message: "Structural and deterministic content validation passed.",
+      durationMs: performance.now() - startedAt,
+      details: {
+        attempt: monitoring.attempt,
+        requestedCount: request.questionCount,
+        returnedCount: parsed.data.questions.length,
+        acceptedCount: parsed.data.questions.length,
+      },
+    });
+  }
   return parsed.data;
 }

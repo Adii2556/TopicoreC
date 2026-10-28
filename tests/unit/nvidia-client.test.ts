@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NvidiaClient } from "@/ai/nvidia/client";
 import { ProviderError } from "@/ai/nvidia/errors";
 import { PRACTICE_LIMITS } from "@/domain/practice/constants";
+import { getMonitorSnapshot, resetMonitorForTests } from "@/monitoring/server";
 
 const config = {
   NVIDIA_API_KEY: "test-key",
@@ -18,7 +19,11 @@ const completionRequest = {
   temperature: 0,
 };
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
+  resetMonitorForTests();
+});
 
 describe("NvidiaClient", () => {
   it("returns completion text without exposing transport details", async () => {
@@ -67,15 +72,35 @@ describe("NvidiaClient", () => {
   });
 
   it("maps timeout, network, and server failures without leaking transport errors", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("ENABLE_DEV_MONITOR", "true");
     const timeoutClient = new NvidiaClient(
       config,
       vi.fn().mockRejectedValue(new DOMException("secret timeout detail", "TimeoutError")),
     );
-    await expect(timeoutClient.complete(completionRequest)).rejects.toMatchObject({
+    await expect(
+      timeoutClient.complete({
+        ...completionRequest,
+        monitoring: { requestId: "req-timeout", operation: "generation", attempt: 1 },
+      }),
+    ).rejects.toMatchObject({
       code: "PROVIDER_TIMEOUT",
       retryable: true,
       message: "The provider request timed out.",
     });
+
+    const timeoutEvents = getMonitorSnapshot().events;
+    expect(timeoutEvents.map((event) => event.event)).toEqual([
+      "api.request.started",
+      "api.request.failed",
+    ]);
+    expect(timeoutEvents[1]).toMatchObject({
+      requestId: "req-timeout",
+      status: "failed",
+      details: { errorCode: "PROVIDER_TIMEOUT", retryable: true },
+    });
+    expect(JSON.stringify(timeoutEvents)).not.toContain("secret timeout detail");
+    expect(JSON.stringify(timeoutEvents)).not.toContain(config.NVIDIA_API_KEY);
 
     const networkClient = new NvidiaClient(config, vi.fn().mockRejectedValue(new Error("dns")));
     await expect(networkClient.complete(completionRequest)).rejects.toMatchObject({

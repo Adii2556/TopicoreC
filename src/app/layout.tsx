@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
+import { DevMonitorBridge } from "@/components/dev-monitor-bridge";
+import { isDevMonitorEnabled } from "@/monitoring/server";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -24,12 +27,14 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+  const monitoringEnabled = isDevMonitorEnabled();
   return (
     <html data-scroll-behavior="smooth" lang="en">
       <body>
         <a className="skip-link" href="#main-content">
           Skip to main content
         </a>
+        <DevMonitorBridge enabled={monitoringEnabled} />
         {children}
       </body>
     </html>

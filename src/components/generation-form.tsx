@@ -8,6 +8,7 @@ import {
   practiceSetSchema,
   type GeneratePracticeSetRequest,
 } from "@/domain/practice/schemas";
+import { reportClientMonitorEvent } from "@/monitoring/client";
 import { createPracticeSession, savePracticeSession } from "@/state/practice-session";
 
 import { Button } from "./ui/button";
@@ -25,8 +26,10 @@ const defaults: GeneratePracticeSetRequest = {
 
 export function GenerationForm({
   initialConfig = defaults,
+  monitoringEnabled = false,
 }: {
   initialConfig?: GeneratePracticeSetRequest;
+  monitoringEnabled?: boolean;
 }) {
   const router = useRouter();
   const [subject, setSubject] = useState<GeneratePracticeSetRequest["subject"]>(
@@ -89,16 +92,44 @@ export function GenerationForm({
     if (!request || status === "submitting") return;
 
     const controller = new AbortController();
+    const requestId = `req_${crypto.randomUUID()}`;
+    const startedAt = performance.now();
     activeRequest.current = controller;
     setStatus("submitting");
     setMessage("Creating and validating your practice set…");
 
+    reportClientMonitorEvent(monitoringEnabled, {
+      requestId,
+      event: "frontend.generation.submitted",
+      level: "info",
+      source: "generation-form",
+      status: "started",
+      message: "The browser submitted a generation request.",
+      details: {
+        subject: request.subject,
+        difficulty: request.difficulty,
+        mode: request.mode,
+        questionCount: request.questionCount,
+        topicCount: request.topics.length,
+      },
+    });
+
     try {
       const response = await fetch("/api/practice/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Request-Id": requestId },
         body: JSON.stringify(request),
         signal: controller.signal,
+      });
+      reportClientMonitorEvent(monitoringEnabled, {
+        requestId,
+        event: "frontend.response.received",
+        level: response.ok ? "success" : "warning",
+        source: "generation-form",
+        status: response.ok ? "success" : "failed",
+        message: "The browser received the generation API response.",
+        durationMs: performance.now() - startedAt,
+        details: { httpStatus: response.status },
       });
       let payload: unknown;
       try {
@@ -131,6 +162,18 @@ export function GenerationForm({
       setMessage(`${result.data.questions.length} validated questions are ready.`);
       router.push("/practice");
     } catch (error) {
+      reportClientMonitorEvent(monitoringEnabled, {
+        requestId,
+        event: "frontend.generation.failed",
+        level: controller.signal.aborted ? "warning" : "error",
+        source: "generation-form",
+        status: "failed",
+        message: controller.signal.aborted
+          ? "The browser cancelled generation."
+          : "The browser could not complete generation.",
+        durationMs: performance.now() - startedAt,
+        details: { errorName: error instanceof Error ? error.name : "UnknownError" },
+      });
       if (controller.signal.aborted) {
         setStatus("idle");
         setMessage("Generation cancelled. Your settings are unchanged.");

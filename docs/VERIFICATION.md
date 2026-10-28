@@ -6,9 +6,9 @@ Date: 2026-10-28
 
 - TypeScript: passed with `tsc --noEmit`.
 - ESLint: passed with the Next.js and TypeScript rules enabled.
-- Unit and integration tests: 96 passed across 14 files; the 6 live-provider cases are skipped by
+- Unit and integration tests: 105 passed across 16 files; the 6 live-provider cases are skipped by
   default.
-- End-to-end: 15 passed across desktop, 820px tablet, and Pixel 7 Chromium projects.
+- End-to-end: 18 passed across desktop, 820px tablet, and Pixel 7 Chromium projects.
 - Production build: passed with Next.js 16.4.3.
 - Clean install: `npm ci` passed with Node.js 24.19.0 and npm 11.9.0.
 - Dependency audit: zero known vulnerabilities at the configured high-severity gate.
@@ -17,6 +17,13 @@ The browser journeys cover MCQ-only, written-only, and mixed generation; answer 
 incomplete-finish confirmation; refresh recovery; completion and filtered review; bookmarks; all
 results actions; safe error recovery and intentional retry; empty-session recovery; custom 404
 recovery; and horizontal overflow checks at all three viewport sizes.
+
+The temporary developer monitor tests cover bounded and restart-ephemeral storage, credential
+redaction, browser/server request-ID correlation, successful provider metadata and token usage,
+invalid JSON, validation retry and exhaustion, production 404 enforcement, filtering, expansion,
+pause/resume, clearing, and responsive behavior. A live monitored generation returned 201 and
+produced 16 correlated events without storing the raw question or a credential pattern. The monitor
+page and all monitor APIs returned 404 from a production build even when `ENABLE_DEV_MONITOR=true`.
 
 ## Functional checks
 

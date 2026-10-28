@@ -6,8 +6,12 @@ import { PRACTICE_LIMITS } from "@/domain/practice/constants";
 import { generatePracticeSetRequestSchema } from "@/domain/practice/schemas";
 import { generatePracticeSet } from "@/generation/pipeline";
 import { DraftValidationError } from "@/generation/validate-draft";
+import { recordMonitorEvent } from "@/monitoring/server";
 import { readServerConfig, ServerConfigError } from "@/server/config";
-import { problemResponse } from "@/server/problem-response";
+import {
+  problemResponse as createProblemResponse,
+  type ProblemDetails,
+} from "@/server/problem-response";
 import { acquireGenerationSlot, getTrustedRequestSource } from "@/server/rate-limit";
 import { BodyTooLargeError, readLimitedText } from "@/server/read-limited-text";
 import { createRequestId } from "@/server/request-id";
@@ -30,7 +34,60 @@ function hasValidOrigin(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const requestId = createRequestId();
+  const routeStartedAt = performance.now();
+  const requestId = createRequestId(request);
+  const problemResponse = (problem: ProblemDetails, responseRequestId: string) => {
+    const inputFailure = new Set([
+      "REQUEST_REJECTED",
+      "UNSUPPORTED_MEDIA_TYPE",
+      "REQUEST_TOO_LARGE",
+      "INVALID_REQUEST",
+    ]).has(problem.code);
+    if (inputFailure) {
+      recordMonitorEvent({
+        requestId: responseRequestId,
+        event: "input.validation.failed",
+        level: "warning",
+        source: "generate-route",
+        status: "failed",
+        message: "Generation request input validation failed.",
+        durationMs: performance.now() - routeStartedAt,
+        details: { errorCode: problem.code, httpStatus: problem.status },
+      });
+    }
+    recordMonitorEvent({
+      requestId: responseRequestId,
+      event: "http.request.failed",
+      level: problem.status >= 500 ? "error" : "warning",
+      source: "generate-route",
+      status: "failed",
+      message: problem.title,
+      durationMs: performance.now() - routeStartedAt,
+      details: {
+        errorCode: problem.code,
+        httpStatus: problem.status,
+        retryable: problem.retryable,
+      },
+    });
+    return createProblemResponse(problem, responseRequestId);
+  };
+  recordMonitorEvent({
+    requestId,
+    event: "http.request.received",
+    level: "info",
+    source: "generate-route",
+    status: "started",
+    message: "Generation API request received.",
+    details: { method: request.method, endpoint: "/api/practice/generate" },
+  });
+  recordMonitorEvent({
+    requestId,
+    event: "input.validation.started",
+    level: "debug",
+    source: "generate-route",
+    status: "started",
+    message: "Generation request validation started.",
+  });
   if (!hasValidOrigin(request)) {
     return problemResponse(
       {
@@ -130,6 +187,23 @@ export async function POST(request: Request) {
     );
   }
 
+  recordMonitorEvent({
+    requestId,
+    event: "input.validated",
+    level: "success",
+    source: "generate-route",
+    status: "success",
+    message: "Generation request input passed validation.",
+    durationMs: performance.now() - routeStartedAt,
+    details: {
+      subject: parsedRequest.data.subject,
+      difficulty: parsedRequest.data.difficulty,
+      mode: parsedRequest.data.mode,
+      questionCount: parsedRequest.data.questionCount,
+      topicCount: parsedRequest.data.topics.length,
+    },
+  });
+
   const slot = acquireGenerationSlot(getTrustedRequestSource(request));
   if (!slot.allowed) {
     return problemResponse(
@@ -147,7 +221,19 @@ export async function POST(request: Request) {
 
   try {
     const client = new NvidiaClient(readServerConfig());
-    const data = await generatePracticeSet(parsedRequest.data, client, request.signal);
+    const data = await generatePracticeSet(parsedRequest.data, client, request.signal, {
+      monitoring: { requestId },
+    });
+    recordMonitorEvent({
+      requestId,
+      event: "http.request.completed",
+      level: "success",
+      source: "generate-route",
+      status: "success",
+      message: "Generation API request completed.",
+      durationMs: performance.now() - routeStartedAt,
+      details: { httpStatus: 201, questionCount: data.questions.length },
+    });
     return NextResponse.json(
       { data, meta: { requestId } },
       {

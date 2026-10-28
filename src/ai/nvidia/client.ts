@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { PRACTICE_LIMITS } from "@/domain/practice/constants";
+import { recordMonitorEvent } from "@/monitoring/server";
 import type { ServerConfig } from "@/server/config";
 import { BodyTooLargeError, readLimitedText } from "@/server/read-limited-text";
 
@@ -18,6 +19,14 @@ const providerResponseSchema = z
           .passthrough(),
       )
       .min(1),
+    usage: z
+      .object({
+        prompt_tokens: z.number().int().nonnegative().optional(),
+        completion_tokens: z.number().int().nonnegative().optional(),
+        total_tokens: z.number().int().nonnegative().optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 
@@ -42,6 +51,75 @@ export class NvidiaClient implements QuestionModel {
   ) {}
 
   async complete(request: CompletionRequest, signal?: AbortSignal) {
+    const startedAt = performance.now();
+    const monitoring = request.monitoring;
+    if (monitoring) {
+      recordMonitorEvent({
+        requestId: monitoring.requestId,
+        event: "api.request.started",
+        level: "info",
+        source: "nvidia-client",
+        status: "started",
+        message: "NVIDIA API request started.",
+        details: {
+          endpoint: "chat/completions",
+          model: this.config.NVIDIA_MODEL,
+          operation: monitoring.operation,
+          attempt: monitoring.attempt,
+        },
+      });
+    }
+
+    try {
+      const result = await this.performComplete(request, signal);
+      if (monitoring) {
+        recordMonitorEvent({
+          requestId: monitoring.requestId,
+          event: "api.response.received",
+          level: "success",
+          source: "nvidia-client",
+          status: "success",
+          message: "NVIDIA API response received and parsed.",
+          durationMs: performance.now() - startedAt,
+          details: {
+            endpoint: "chat/completions",
+            model: this.config.NVIDIA_MODEL,
+            operation: monitoring.operation,
+            attempt: monitoring.attempt,
+            httpStatus: result.httpStatus,
+            promptTokens: result.promptTokens,
+            completionTokens: result.completionTokens,
+            totalTokens: result.totalTokens,
+          },
+        });
+      }
+      return result.content;
+    } catch (error) {
+      if (monitoring) {
+        recordMonitorEvent({
+          requestId: monitoring.requestId,
+          event: "api.request.failed",
+          level: "error",
+          source: "nvidia-client",
+          status: "failed",
+          message: error instanceof ProviderError ? error.message : "NVIDIA API request failed.",
+          durationMs: performance.now() - startedAt,
+          details: {
+            endpoint: "chat/completions",
+            model: this.config.NVIDIA_MODEL,
+            operation: monitoring.operation,
+            attempt: monitoring.attempt,
+            errorCode: error instanceof ProviderError ? error.code : "REQUEST_ABORTED",
+            httpStatus: error instanceof ProviderError ? error.status : undefined,
+            retryable: error instanceof ProviderError ? error.retryable : false,
+          },
+        });
+      }
+      throw error;
+    }
+  }
+
+  private async performComplete(request: CompletionRequest, signal?: AbortSignal) {
     const timeoutSignal = AbortSignal.timeout(this.timeoutMs);
     const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
     const body = {
@@ -169,6 +247,12 @@ export class NvidiaClient implements QuestionModel {
       );
     }
 
-    return content;
+    return {
+      content,
+      httpStatus: response.status,
+      promptTokens: parsed.data.usage?.prompt_tokens,
+      completionTokens: parsed.data.usage?.completion_tokens,
+      totalTokens: parsed.data.usage?.total_tokens,
+    };
   }
 }

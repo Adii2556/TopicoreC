@@ -91,6 +91,46 @@ describe("GenerationForm", () => {
     await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/practice"));
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(generatedSet.config);
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
+      "Content-Type": "application/json",
+      "X-Request-Id": expect.stringMatching(/^req_/),
+    });
+  });
+
+  it("correlates explicit browser events with the generation request", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
+      void _init;
+      if (String(input) === "/api/dev/monitor/events") return new Response(null, { status: 204 });
+      return new Response(JSON.stringify({ data: generatedSet }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<GenerationForm initialConfig={generatedConfig} monitoringEnabled />);
+
+    await user.click(screen.getByRole("button", { name: "Generate practice set" }));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/practice"));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(([input]) => String(input) === "/api/dev/monitor/events"),
+      ).toHaveLength(2),
+    );
+
+    const generationCall = fetchMock.mock.calls.find(
+      ([input]) => String(input) === "/api/practice/generate",
+    );
+    const monitorCalls = fetchMock.mock.calls.filter(
+      ([input]) => String(input) === "/api/dev/monitor/events",
+    );
+    const requestId = (generationCall?.[1]?.headers as Record<string, string>)["X-Request-Id"];
+    const monitorEvents = monitorCalls.map(([, init]) => JSON.parse(String(init?.body)));
+    expect(monitorEvents.map((event) => event.event)).toEqual([
+      "frontend.generation.submitted",
+      "frontend.response.received",
+    ]);
+    expect(monitorEvents.every((event) => event.requestId === requestId)).toBe(true);
   });
 
   it("does not navigate when browser session storage is unavailable", async () => {
